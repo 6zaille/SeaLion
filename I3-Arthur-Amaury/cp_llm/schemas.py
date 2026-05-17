@@ -1,6 +1,6 @@
 """Schemas Pydantic pour les sorties structurees de chaque etage du pipeline."""
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -26,10 +26,12 @@ class ProblemAnalysis(BaseModel):
     entities: list[str] = Field(
         description="Noms des ensembles/entites du probleme (ex: 'reines', 'objets', 'sommets')."
     )
-    parameters: dict[str, int | float | list] = Field(
+    parameters: dict[str, Any] = Field(
         description=(
             "Valeurs numeriques mentionnees dans l'enonce, indexees par un nom court. "
-            "Ex: {'n_queens': 8, 'capacity': 50, 'weights': [10, 20, 30]}."
+            "Accepte scalaires, listes, et dicts imbriques (matrices, mappings). "
+            "Ex: {'n_queens': 8, 'capacity': 50, 'weights': [10, 20, 30], "
+            "'distances': {'A-B': 10, 'A-C': 15}}."
         )
     )
     summary: str = Field(description="Resume en une phrase du probleme.")
@@ -104,6 +106,18 @@ class ConstraintSet(BaseModel):
     constraints: list[ConstraintSpec]
 
 
+class CodegenAttempt(BaseModel):
+    """Une tentative de generation de code, avec le code produit et l'erreur eventuelle."""
+
+    attempt_number: int = Field(description="Indice de la tentative (1 pour la premiere).")
+    code: str = Field(description="Code Python produit lors de cette tentative.")
+    ok: bool = Field(description="True si la verification a passe pour cette tentative.")
+    error: Optional[str] = Field(
+        default=None,
+        description="Message d'erreur si la tentative a echoue (None sinon).",
+    )
+
+
 class PipelineResult(BaseModel):
     """Resultat complet d'un passage du pipeline."""
 
@@ -113,6 +127,7 @@ class PipelineResult(BaseModel):
     constraints: ConstraintSet
     generated_code: str
     verification: dict
+    codegen_attempts: list[CodegenAttempt] = Field(default_factory=list)
     execution_time_s: Optional[float] = None
     reference_execution_time_s: Optional[float] = None
     error_stage: Optional[

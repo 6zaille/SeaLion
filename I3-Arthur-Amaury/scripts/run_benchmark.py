@@ -33,7 +33,12 @@ try:
 except ImportError:
     pass
 
-def build_client(provider: str, model: str | None, effort: str) -> LLMClient:
+def build_client(
+    provider: str,
+    model: str | None,
+    effort: str,
+    cache_dir: Path | None = None,
+) -> LLMClient:
     try:
         from dotenv import load_dotenv
 
@@ -42,8 +47,15 @@ def build_client(provider: str, model: str | None, effort: str) -> LLMClient:
         pass
 
     if provider == "mistral":
-        return MistralClient(model=model)
-    raise ValueError(f"Provider inconnu : {provider}")
+        inner: LLMClient = MistralClient(model=model)
+    else:
+        raise ValueError(f"Provider inconnu : {provider}")
+
+    if cache_dir is not None:
+        from cp_llm.cache import CachedLLMClient
+
+        return CachedLLMClient(inner, cache_dir)
+    return inner
 
 
 def load_reference(problem_name: str) -> tuple[dict | None, float | None]:
@@ -68,9 +80,12 @@ def load_reference(problem_name: str) -> tuple[dict | None, float | None]:
 
 
 def benchmark(
-    provider: str = "mistral", model: str | None = None, effort: str = "high"
+    provider: str = "mistral",
+    model: str | None = None,
+    effort: str = "high",
+    cache_dir: Path | None = None,
 ) -> list[dict]:
-    client = build_client(provider, model, effort)
+    client = build_client(provider, model, effort, cache_dir)
 
     problems_dir = ROOT / "benchmark" / "problems"
     rows = []
@@ -115,6 +130,9 @@ def benchmark(
                 len(result.generated_code.splitlines()) if result.generated_code else 0
             ),
             "verification": result.verification,
+            "n_codegen_attempts": len(result.codegen_attempts),
+            "n_codegen_failures": sum(1 for a in result.codegen_attempts if not a.ok),
+            "codegen_attempts": [a.model_dump() for a in result.codegen_attempts],
             "reference": reference,
             "objective_match": _compare_objectives(result.verification, reference),
             "generation_time_s": gen_time,
@@ -181,12 +199,29 @@ def main() -> int:
         default=ROOT / "benchmark_report.json",
         help="Chemin du rapport JSON de sortie.",
     )
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=ROOT / ".cache" / "llm",
+        help="Repertoire de cache disque pour les reponses LLM.",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Desactive le cache disque (par defaut active).",
+    )
     args = parser.parse_args()
 
     if args.mock:
         args.provider = "mock"
 
-    rows = benchmark(provider=args.provider, model=args.model, effort=args.effort)
+    cache_dir = None if args.no_cache else args.cache_dir
+    rows = benchmark(
+        provider=args.provider,
+        model=args.model,
+        effort=args.effort,
+        cache_dir=cache_dir,
+    )
     args.output.write_text(json.dumps(rows, indent=2, default=str))
 
     n_ok = sum(1 for r in rows if r.get("ok"))

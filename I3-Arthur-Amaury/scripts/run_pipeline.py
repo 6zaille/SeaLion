@@ -25,7 +25,12 @@ try:
 except ImportError:
     pass
 
-def build_client(provider: str, model: str | None, effort: str) -> LLMClient:
+def build_client(
+    provider: str,
+    model: str | None,
+    effort: str,
+    cache_dir: Path | None = None,
+) -> LLMClient:
     try:
         from dotenv import load_dotenv
 
@@ -34,8 +39,15 @@ def build_client(provider: str, model: str | None, effort: str) -> LLMClient:
         pass
 
     if provider == "mistral":
-        return MistralClient(model=model)
-    raise ValueError(f"Provider inconnu : {provider}")
+        inner: LLMClient = MistralClient(model=model)
+    else:
+        raise ValueError(f"Provider inconnu : {provider}")
+
+    if cache_dir is not None:
+        from cp_llm.cache import CachedLLMClient
+
+        return CachedLLMClient(inner, cache_dir)
+    return inner
 
 
 def main() -> int:
@@ -71,12 +83,24 @@ def main() -> int:
         default=None,
         help="Si fourni, sauve le code Python genere a ce chemin.",
     )
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=ROOT / ".cache" / "llm",
+        help="Repertoire de cache disque pour les reponses LLM.",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Desactive le cache disque (par defaut active).",
+    )
     args = parser.parse_args()
 
     if args.mock:
         args.provider = "mock"
 
-    client = build_client(args.provider, args.model, args.effort)
+    cache_dir = None if args.no_cache else args.cache_dir
+    client = build_client(args.provider, args.model, args.effort, cache_dir)
 
     print(f"=== Pipeline sur {args.problem} ===\n")
     result = run_pipeline(client, args.problem)

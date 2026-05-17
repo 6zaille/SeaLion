@@ -17,6 +17,7 @@ def solve() -> dict:
     model.Maximize(sum(VALUES[i] * take[i] for i in range(n)))
 
     solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1
     status = solver.Solve(model)
 
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):

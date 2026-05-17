@@ -54,7 +54,9 @@ class LLMClient:
     ) -> T:
         raise NotImplementedError
 
-    def call_text(self, system_prompt: str, user_prompt: str) -> str:
+    def call_text(
+        self, system_prompt: str, user_prompt: str, temperature: float = 0.0
+    ) -> str:
         raise NotImplementedError
 
 
@@ -143,15 +145,17 @@ class MistralClient(LLMClient):
             f"Schema JSON cible (Pydantic v2) :\n{json.dumps(schema, indent=2)}"
         )
 
-        response = self._client.chat.complete(
-            model=self._model,
-            messages=[
-                {"role": "system", "content": enriched_system},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.0,
-            max_tokens=4096,
-            response_format={"type": "json_object"},
+        response = self._call_with_retry(
+            lambda: self._client.chat.complete(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": enriched_system},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.0,
+                max_tokens=4096,
+                response_format={"type": "json_object"},
+            )
         )
         raw = response.choices[0].message.content
         if not isinstance(raw, str):
@@ -176,15 +180,19 @@ class MistralClient(LLMClient):
                 f"JSON recu :\n{json.dumps(data, indent=2)[:2000]}"
             ) from e
 
-    def call_text(self, system_prompt: str, user_prompt: str) -> str:
-        response = self._client.chat.complete(
-            model=self._model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.0,
-            max_tokens=4096,
+    def call_text(
+        self, system_prompt: str, user_prompt: str, temperature: float = 0.0
+    ) -> str:
+        response = self._call_with_retry(
+            lambda: self._client.chat.complete(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=temperature,
+                max_tokens=4096,
+            )
         )
         content = response.choices[0].message.content
         if not isinstance(content, str):
